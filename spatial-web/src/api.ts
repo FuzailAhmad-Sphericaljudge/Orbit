@@ -27,6 +27,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const orbitApi = {
   listIncidents: () => request<Incident[]>("/api/incidents"),
+  incidentTemplates: () => request<Array<{ id: string; name: string; service: string; severity: string }>>("/api/incident-templates"),
+  createFromTemplate: (templateId: string) => request<Incident>(`/api/incident-templates/${templateId}/incidents`, { method: "POST", body: "{}" }),
   voiceToken: (incidentId: string) => request<{ app_id: string; channel: string; uid: number; token: string }>(`/api/incidents/${incidentId}/voice/rtc-token`, { method: "POST", body: "{}" }),
   startVoiceSession: (incidentId: string, payload: { channel: string; remote_uids: string[]; language: string }) => request<{ id: string }>(`/api/incidents/${incidentId}/voice/sessions`, { method: "POST", body: JSON.stringify(payload) }),
   stopVoiceSession: (incidentId: string, sessionId: string) => request<{ id: string }>(`/api/incidents/${incidentId}/voice/sessions/${sessionId}/stop`, { method: "POST" }),

@@ -4,11 +4,18 @@ import { createRoot } from "react-dom/client";
 import { SpatialCommandCenter, type SpatialModule } from "./SpatialCommandCenter";
 import { useCommandCenter } from "./useCommandCenter";
 import type { CommandCenterSnapshot, RecoveryCheck } from "./types";
-import { orbitApi } from "./api";
+import { API_BASE, orbitApi } from "./api";
 import { completeLogin, hasAccessToken, logout, oidcEnabled, startLogin } from "./oidc";
 import "./styles.css";
 
 type DetailRow = { primary: string; secondary: string; status: string };
+
+function StatusPage() {
+  const [status, setStatus] = useState<{ status: string; updated_at: string; components: Array<{ name: string; status: string }> } | null>(null);
+  useEffect(() => { fetch(`${API_BASE}/api/status`).then((response) => response.json()).then(setStatus).catch(() => setStatus({ status: "unknown", updated_at: new Date().toISOString(), components: [] })); }, []);
+  const label = (value: string) => value.replaceAll("_", " ");
+  return <main className="public-status"><header><b>ORBIT</b><span>PUBLIC SERVICE STATUS</span></header><section><p className={`status-dot ${status?.status ?? "unknown"}`}>{label(status?.status ?? "checking")}</p><h1>{status?.status === "operational" ? "All systems operational" : "Service disruption detected"}</h1><p>Last updated {status ? new Date(status.updated_at).toLocaleString() : "now"}</p><a className="status-command-link" href="/">OPEN COMMAND CENTER</a><div className="status-components">{status?.components.length ? status.components.map((component) => <article key={component.name}><span>{component.name}</span><b className={component.status}>{label(component.status)}</b></article>) : <article><span>ORBIT platform</span><b className="operational">operational</b></article>}</div></section></main>;
+}
 
 function rowsFor(id: string, snapshot: CommandCenterSnapshot | null): DetailRow[] {
   if (!snapshot) return [];
@@ -67,6 +74,9 @@ function App() {
   const [reportStatus, setReportStatus] = useState("");
   const [signedIn, setSignedIn] = useState(() => hasAccessToken());
   const [authStatus, setAuthStatus] = useState("");
+  const [templates, setTemplates] = useState<Array<{ id: string; name: string; service: string; severity: string }>>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [templateStatus, setTemplateStatus] = useState("");
   const [voiceStatus, setVoiceStatus] = useState("");
   const [voiceMuted, setVoiceMuted] = useState(false);
   const voiceClient = useRef<IAgoraRTCClient | null>(null);
@@ -97,6 +107,17 @@ function App() {
       }
     }).catch(() => setAuthStatus("SIGN-IN FAILED"));
   }, [refresh]);
+  useEffect(() => { orbitApi.incidentTemplates().then(setTemplates).catch(() => undefined); }, [signedIn]);
+  const declareTemplate = async () => {
+    if (!templateId) return;
+    const selected = templates.find((template) => template.id === templateId);
+    if (!selected || !window.confirm(`Declare ${selected.severity} incident from ${selected.name} template?`)) return;
+    try {
+      const incident = await orbitApi.createFromTemplate(templateId);
+      setIncidentId(incident.id);
+      setTemplateStatus("INCIDENT DECLARED");
+    } catch { setTemplateStatus("TEMPLATE DECLARATION FAILED"); }
+  };
   const runPaymentForecast = async () => {
     if (!incidentId) return;
     setLabStatus("FORECASTING");
@@ -285,7 +306,7 @@ function App() {
 
   return <main className="spatial-app" style={{ "--accent": active.accent, "--accent-secondary": active.accentSecondary } as CSSProperties}>
     <SpatialCommandCenter modules={modules} mode={modeFor(snapshot)} onActiveChange={handleActiveChange} onOpen={handleOpen} />
-    <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select><button onClick={refresh}>SYNC</button>{oidcEnabled && <button onClick={() => signedIn ? logout() : void startLogin()}>{signedIn ? "SIGN OUT" : "SIGN IN"}</button>}</div><span>{authStatus || (oidcEnabled ? (signedIn ? "OIDC AUTHENTICATED" : "SIGN-IN REQUIRED") : (error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"))}</span></header>
+    <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select>{templates.length > 0 && <><select value={templateId} onChange={(event) => setTemplateId(event.target.value)}><option value="">DECLARE TEMPLATE</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.severity} / {template.name}</option>)}</select><button onClick={declareTemplate} disabled={!templateId}>DECLARE</button></>}<button onClick={refresh}>SYNC</button>{oidcEnabled && <button onClick={() => signedIn ? logout() : void startLogin()}>{signedIn ? "SIGN OUT" : "SIGN IN"}</button>}</div><span>{templateStatus || authStatus || (oidcEnabled ? (signedIn ? "OIDC AUTHENTICATED" : "SIGN-IN REQUIRED") : (error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"))}</span></header>
     <aside className="frame-left"><span>OPERATIONAL RESPONSE</span><span>VOICE / EVIDENCE / ACTION</span></aside>
     <aside className="frame-right"><span>ROOT CAUSE</span><b>UNCONFIRMED</b><span>HUMAN AUTHORITY</span><b>PRESERVED</b></aside>
     <div className="active-caption"><span>{active.index} / {active.eyebrow}</span><h1>{active.title}</h1><p>{active.summary}</p><button onClick={() => setOpenId(active.id)}>OPEN SURFACE</button></div>
@@ -305,4 +326,4 @@ function App() {
   </main>;
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(window.location.pathname === "/status" ? <StatusPage /> : <App />);

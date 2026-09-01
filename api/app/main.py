@@ -44,10 +44,11 @@ from .observability import (ACTION_ESCALATIONS, BRIEFINGS, INVESTIGATION_RUNS, R
 from .realtime import hub
 from .retention import apply_retention
 from .job_queue import job_queue
+from .incident_templates import TEMPLATES
 from .schemas import (ActionCreate, ActionRead, ActionUpdate, AgentRunRead, AnalysisRead, ApprovalCreate,
                       ApprovalDecision, ApprovalRead, BriefingGenerateRequest, BriefingRead, CommandCenterRead,
                       EscalationResult, EscalationRunRequest, EvidenceArtifactCreate,
-                      EvidenceArtifactRead, EvidenceCreate, EvidenceRead, FindingRead, IncidentCreate,
+                      EvidenceArtifactRead, EvidenceCreate, EvidenceRead, FindingRead, IncidentCreate, TemplateIncidentCreate,
                       IncidentRead, IncidentReportRead, GrafanaAlertWebhook, IntegrationStatus, InvestigationReport,
                       InvestigationRunRequest, KnowledgeEdgeRead, KnowledgeNodeRead, MemoryIndexRequest,
                       ParticipantCreate, ParticipantRead, RecoveryCheckCreate, RecoveryCheckRead,
@@ -114,6 +115,18 @@ def health():
     return {"status": "ok", "service": "orbit-incident-engine", "environment": settings.environment, "agora_configured": voice_service.configured()}
 
 
+@app.get("/api/status")
+def public_status(db: Session = Depends(get_db)):
+    active = list(db.scalars(select(Incident).where(Incident.status != IncidentStatus.resolved)))
+    components: dict[str, str] = {}
+    for incident in active:
+        current = components.get(incident.service, "operational")
+        next_status = "major_outage" if incident.severity == "SEV1" else "degraded"
+        components[incident.service] = "major_outage" if "major_outage" in (current, next_status) else "degraded"
+    overall = "major_outage" if "major_outage" in components.values() else ("degraded" if components else "operational")
+    return {"status": overall, "updated_at": datetime.now(timezone.utc), "components": [{"name": name, "status": state} for name, state in sorted(components.items())]}
+
+
 @app.get("/ready")
 async def readiness(db: Session = Depends(get_db)):
     try:
@@ -141,6 +154,28 @@ async def create_incident(payload: IncidentCreate, db: Session = Depends(get_db)
         db.add(RecoveryCheck(incident_id=incident.id, criterion=incident.recovery_criteria, status=RecoveryCheckStatus.pending, automated=False))
         db.commit()
     event = add_timeline_event(db, incident.id, "incident.declared", f"Incident declared: {incident.title}", incident.commander_id, {"severity": incident.severity})
+    await hub.publish(incident.id, "timeline.created", {"id": event.id, "summary": event.summary})
+    return incident
+
+
+@app.get("/api/incident-templates")
+def list_incident_templates(_: CurrentUser = Depends(current_user)):
+    return [{"id": template_id, **{key: value for key, value in template.items() if key != "actions"}} for template_id, template in TEMPLATES.items()]
+
+
+@app.post("/api/incident-templates/{template_id}/incidents", response_model=IncidentRead, status_code=201)
+async def create_incident_from_template(template_id: str, payload: TemplateIncidentCreate, db: Session = Depends(get_db), user: CurrentUser = Depends(require_roles("commander", "operator", "admin"))):
+    template = TEMPLATES.get(template_id)
+    if not template:
+        raise HTTPException(404, "Incident template not found")
+    incident = Incident(title=payload.title or template["name"], service=template["service"], severity=template["severity"], commander_id=user.user_id, customer_impact=template["customer_impact"], affected_regions=payload.affected_regions, recovery_criteria=template["recovery_criteria"])
+    db.add(incident)
+    db.commit()
+    db.refresh(incident)
+    db.add(RecoveryCheck(incident_id=incident.id, criterion=incident.recovery_criteria, status=RecoveryCheckStatus.pending, automated=False))
+    db.add_all([ActionItem(incident_id=incident.id, task=task, owner_id=user.user_id) for task in template["actions"]])
+    db.commit()
+    event = add_timeline_event(db, incident.id, "incident.declared", f"Incident declared from template: {incident.title}", user.user_id, {"severity": incident.severity, "template": template_id})
     await hub.publish(incident.id, "timeline.created", {"id": event.id, "summary": event.summary})
     return incident
 

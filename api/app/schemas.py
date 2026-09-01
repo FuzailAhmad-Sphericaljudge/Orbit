@@ -24,6 +24,11 @@ class IncidentRead(IncidentCreate):
     model_config = {"from_attributes": True}
 
 
+class TemplateIncidentCreate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=200)
+    affected_regions: list[str] = Field(default_factory=list)
+
+
 class GrafanaAlertWebhook(BaseModel):
     status: str = ""
     alerts: list[dict] = Field(default_factory=list)
