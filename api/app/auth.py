@@ -19,6 +19,15 @@ settings = get_settings()
 jwks_client = PyJWKClient(settings.oidc_jwks_url, cache_keys=True) if settings.oidc_jwks_url else None
 
 
+def claim_value(claims: dict, path: str):
+    value = claims
+    for segment in path.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(segment)
+    return value
+
+
 def decode_access_token(token: str) -> CurrentUser:
     try:
         if jwks_client:
@@ -31,7 +40,7 @@ def decode_access_token(token: str) -> CurrentUser:
     subject = claims.get("sub")
     if not subject:
         raise HTTPException(401, "Access token has no subject")
-    raw_roles = claims.get(settings.oidc_roles_claim, [])
+    raw_roles = claim_value(claims, settings.oidc_roles_claim) or []
     roles = {raw_roles} if isinstance(raw_roles, str) else set(raw_roles)
     return CurrentUser(user_id=str(subject), roles=frozenset(str(role) for role in roles))
 

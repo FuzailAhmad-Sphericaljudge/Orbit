@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import AgoraRTC, { type IAgoraRTCClient, type IMicrophoneAudioTrack } from "agora-rtc-sdk-ng";
 import { createRoot } from "react-dom/client";
 import { SpatialCommandCenter, type SpatialModule } from "./SpatialCommandCenter";
 import { useCommandCenter } from "./useCommandCenter";
 import type { CommandCenterSnapshot, RecoveryCheck } from "./types";
 import { orbitApi } from "./api";
+import { completeLogin, hasAccessToken, logout, oidcEnabled, startLogin } from "./oidc";
 import "./styles.css";
 
 type DetailRow = { primary: string; secondary: string; status: string };
@@ -59,6 +60,13 @@ function App() {
   const [recoveryObservation, setRecoveryObservation] = useState("");
   const [recoveryEvidenceIds, setRecoveryEvidenceIds] = useState("");
   const [resolutionNote, setResolutionNote] = useState("");
+  const [evidenceClaim, setEvidenceClaim] = useState("");
+  const [evidenceSource, setEvidenceSource] = useState("");
+  const [evidenceConfidence, setEvidenceConfidence] = useState("90");
+  const [evidenceStatus, setEvidenceStatus] = useState("");
+  const [reportStatus, setReportStatus] = useState("");
+  const [signedIn, setSignedIn] = useState(() => hasAccessToken());
+  const [authStatus, setAuthStatus] = useState("");
   const [voiceStatus, setVoiceStatus] = useState("");
   const [voiceMuted, setVoiceMuted] = useState(false);
   const voiceClient = useRef<IAgoraRTCClient | null>(null);
@@ -80,6 +88,15 @@ function App() {
   const detailRows = rowsFor(openId ?? "", snapshot).slice(0, 30);
   const handleActiveChange = useCallback((index: number) => setActiveIndex(index), []);
   const handleOpen = useCallback((id: string) => setOpenId(id), []);
+  useEffect(() => {
+    completeLogin().then((completed) => {
+      if (completed) {
+        setSignedIn(true);
+        setAuthStatus("SIGNED IN");
+        void refresh();
+      }
+    }).catch(() => setAuthStatus("SIGN-IN FAILED"));
+  }, [refresh]);
   const runPaymentForecast = async () => {
     if (!incidentId) return;
     setLabStatus("FORECASTING");
@@ -176,6 +193,38 @@ function App() {
       await reviewRecovery();
     } catch { setRecoveryStatus("RESOLUTION BLOCKED BY RECOVERY GATE"); }
   };
+  const addEvidence = async () => {
+    if (!incidentId || evidenceClaim.trim().length < 3 || evidenceSource.trim().length < 2) return setEvidenceStatus("ADD A CLAIM AND SOURCE");
+    const confidence = Number(evidenceConfidence);
+    if (!Number.isInteger(confidence) || confidence < 0 || confidence > 100) return setEvidenceStatus("CONFIDENCE MUST BE 0-100");
+    try {
+      await orbitApi.addEvidence(incidentId, { claim: evidenceClaim.trim(), classification: "fact", confidence, source: evidenceSource.trim() });
+      setEvidenceClaim("");
+      setEvidenceSource("");
+      setEvidenceStatus("EVIDENCE RECORDED");
+      await refresh();
+    } catch { setEvidenceStatus("EVIDENCE RECORDING FAILED"); }
+  };
+  const finalizeReport = async (reportId: string) => {
+    if (!incidentId) return;
+    try {
+      await orbitApi.finalizeReport(incidentId, reportId);
+      setReportStatus("REPORT FINALIZED");
+      await refresh();
+    } catch { setReportStatus("REPORT FINALIZATION FAILED"); }
+  };
+  const downloadAudit = async () => {
+    if (!incidentId) return;
+    try {
+      const audit = await orbitApi.decisionAuditExport(incidentId);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([JSON.stringify(audit, null, 2)], { type: "application/json" }));
+      link.download = `orbit-audit-${incidentId}.json`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setReportStatus("AUDIT EXPORTED");
+    } catch { setReportStatus("AUDIT EXPORT FAILED"); }
+  };
   const joinVoiceRoom = async () => {
     if (!incidentId || voiceClient.current) return;
     setVoiceStatus("REQUESTING MICROPHONE");
@@ -236,7 +285,7 @@ function App() {
 
   return <main className="spatial-app" style={{ "--accent": active.accent, "--accent-secondary": active.accentSecondary } as CSSProperties}>
     <SpatialCommandCenter modules={modules} mode={modeFor(snapshot)} onActiveChange={handleActiveChange} onOpen={handleOpen} />
-    <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select><button onClick={refresh}>SYNC</button></div><span>{error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"}</span></header>
+    <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select><button onClick={refresh}>SYNC</button>{oidcEnabled && <button onClick={() => signedIn ? logout() : void startLogin()}>{signedIn ? "SIGN OUT" : "SIGN IN"}</button>}</div><span>{authStatus || (oidcEnabled ? (signedIn ? "OIDC AUTHENTICATED" : "SIGN-IN REQUIRED") : (error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"))}</span></header>
     <aside className="frame-left"><span>OPERATIONAL RESPONSE</span><span>VOICE / EVIDENCE / ACTION</span></aside>
     <aside className="frame-right"><span>ROOT CAUSE</span><b>UNCONFIRMED</b><span>HUMAN AUTHORITY</span><b>PRESERVED</b></aside>
     <div className="active-caption"><span>{active.index} / {active.eyebrow}</span><h1>{active.title}</h1><p>{active.summary}</p><button onClick={() => setOpenId(active.id)}>OPEN SURFACE</button></div>
@@ -247,9 +296,11 @@ function App() {
       <div className="detail-title"><span>{openModule.index} / {openModule.eyebrow}</span><h2>{openModule.title}</h2><p>{openModule.summary}</p><dl><div><dt>Metric</dt><dd>{openModule.metric}</dd></div><div><dt>State</dt><dd>{snapshot?.incident.status ?? "standby"}</dd></div><div><dt>Root cause</dt><dd>unconfirmed</dd></div></dl></div>
       <div className="detail-data"><header><span>LIVE INCIDENT DATA</span><span>{detailRows.length} RECORDS</span></header>{detailRows.length ? detailRows.map((row, index) => <article key={`${row.primary}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{row.primary}</h3><p>{row.secondary}</p></div><b>{row.status.replaceAll("_", " ")}</b></article>) : <p className="detail-empty">This surface is ready. Live records will appear when an incident is declared.</p>}</div>
       {openModule.id === "prediction" && <div className="prediction-controls"><span>{labStatus || "LIVE LEARNING READY"}</span><button onClick={ingestLiveSignals} disabled={!incidentId}>INGEST SIGNALS</button><button onClick={runPaymentForecast} disabled={!incidentId}>FORECAST</button><button onClick={runTrafficShiftSimulation} disabled={!snapshot?.prediction_engine?.latest}>SIMULATE</button><button onClick={evaluateLatestForecast} disabled={!snapshot?.prediction_engine?.latest}>EVALUATE</button><button onClick={runProductionLearning} disabled={!incidentId}>LEARN</button></div>}
+      {openModule.id === "truth" && <div className="prediction-controls recovery-controls"><span>{evidenceStatus || "RECORD VERIFIED EVIDENCE"}</span><input value={evidenceClaim} onChange={(event) => setEvidenceClaim(event.target.value)} placeholder="Verified claim" /><input value={evidenceSource} onChange={(event) => setEvidenceSource(event.target.value)} placeholder="Source system or person" /><input value={evidenceConfidence} onChange={(event) => setEvidenceConfidence(event.target.value)} inputMode="numeric" placeholder="Confidence 0-100" /><button onClick={addEvidence} disabled={!incidentId}>ADD EVIDENCE</button></div>}
       {openModule.id === "commander" && <div className="prediction-controls"><span>{voiceStatus || "VOICE ROOM STANDBY"}</span><button onClick={joinVoiceRoom} disabled={!incidentId || Boolean(voiceClient.current)}>JOIN VOICE ROOM</button><button onClick={toggleVoiceMute} disabled={!voiceClient.current}>{voiceMuted ? "UNMUTE" : "MUTE"}</button><button onClick={leaveVoiceRoom} disabled={!voiceClient.current}>LEAVE ROOM</button></div>}
       {openModule.id === "systems" && <div className="prediction-controls"><span>{certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
       {openModule.id === "recovery" && <div className="prediction-controls recovery-controls"><span>{recoveryStatus || (snapshot?.recovery.ready ? "READY FOR HUMAN CONFIRMATION" : `${snapshot?.recovery.blockers.length ?? 0} BLOCKERS REMAIN`)}</span><button onClick={reviewRecovery} disabled={!incidentId}>RECHECK RECOVERY</button>{recoveryChecks.map((check) => <div className="recovery-check" key={check.id}><strong>{check.status.toUpperCase()} / {check.criterion}</strong>{check.status !== "passed" && <><input value={recoveryObservation} onChange={(event) => setRecoveryObservation(event.target.value)} placeholder="Verified observation" /><input value={recoveryEvidenceIds} onChange={(event) => setRecoveryEvidenceIds(event.target.value)} placeholder="Evidence ID(s), comma-separated" /><button onClick={() => updateRecoveryCheck(check, "passed")}>MARK PASSED</button><button onClick={() => updateRecoveryCheck(check, "failed")}>MARK FAILED</button></>}</div>)}{snapshot?.recovery.ready && <><input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Human resolution note (10+ characters)" /><button onClick={resolveIncident}>CONFIRM AND RESOLVE</button></>}</div>}
+      {openModule.id === "report" && <div className="prediction-controls recovery-controls"><span>{reportStatus || "DRAFTS REQUIRE COMMANDER CONFIRMATION"}</span><button onClick={downloadAudit} disabled={!incidentId}>EXPORT AUDIT</button>{snapshot?.reports.filter((report) => report.status !== "final").map((report) => <button key={report.id} onClick={() => finalizeReport(report.id)}>FINALIZE {report.type.toUpperCase()}</button>)}</div>}
     </section>}
   </main>;
 }

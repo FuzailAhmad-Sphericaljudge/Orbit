@@ -5,6 +5,8 @@ import secrets
 import zlib
 from uuid import uuid4
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect, WebSocketException, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import select, text
@@ -1152,6 +1154,13 @@ async def resolve_incident(
 def get_decision_audit(incident_id: str, db: Session = Depends(get_db), _: CurrentUser = Depends(current_user)):
     incident = fetch_incident(db, incident_id)
     return decision_audit(db, incident)
+
+
+@app.get("/api/incidents/{incident_id}/decision-audit/export")
+def export_decision_audit(incident_id: str, db: Session = Depends(get_db), _: CurrentUser = Depends(current_user)):
+    incident = fetch_incident(db, incident_id)
+    document = {"exported_at": datetime.now(timezone.utc), "incident": {"id": incident.id, "title": incident.title, "service": incident.service, "severity": incident.severity, "status": incident.status.value}, "audit": decision_audit(db, incident)}
+    return JSONResponse(content=jsonable_encoder(document), headers={"Content-Disposition": f'attachment; filename="orbit-audit-{incident.id}.json"'})
 
 
 @app.get("/api/incidents/{incident_id}/replay", response_model=list[ReplayEventRead])

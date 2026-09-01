@@ -1,0 +1,23 @@
+{
+  "realm": "orbit",
+  "enabled": true,
+  "roles": { "realm": [{ "name": "commander" }, { "name": "operator" }, { "name": "observer" }] },
+  "clients": [{
+    "clientId": "orbit-spatial",
+    "name": "ORBIT Spatial Command Center",
+    "enabled": true,
+    "protocol": "openid-connect",
+    "publicClient": true,
+    "standardFlowEnabled": true,
+    "directAccessGrantsEnabled": false,
+    "redirectUris": ["http://localhost:5174/*"],
+    "webOrigins": ["http://localhost:5174"],
+    "attributes": { "pkce.code.challenge.method": "S256" },
+    "protocolMappers": [{
+      "name": "ORBIT audience",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-audience-mapper",
+      "config": { "included.client.audience": "orbit-spatial", "access.token.claim": "true", "id.token.claim": "false" }
+    }]
+  }]
+}
