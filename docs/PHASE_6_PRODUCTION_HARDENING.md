@@ -88,4 +88,21 @@ Create a portable database backup without installing PostgreSQL locally:
 .\scripts\backup-docker.ps1
 ```
 
+## Free HTTPS preview with Cloudflare Quick Tunnel
+
+After the local API is running, open a separate PowerShell window and run:
+
+```text
+.\scripts\start-quick-tunnel.ps1
+```
+
+Keep that window open. Cloudflare prints a temporary `https://…trycloudflare.com` URL; use
+`https://…trycloudflare.com/api/alerts/grafana` as the Grafana webhook endpoint and validate it with:
+
+```text
+.\scripts\preflight.ps1 -TunnelUrl https://…trycloudflare.com
+```
+
+Quick Tunnels are free for local demonstrations and webhook testing, but their hostname changes on restart and they have no uptime guarantee. They are not a permanent production ingress. A real release needs a named Cloudflare Tunnel or another HTTPS host, a stable domain, and externally managed backups.
+
 Live Agora, Slack, Jira, PagerDuty, monitoring, OIDC, and external multimodal validation still require the team's real credentials and endpoints; the code paths and production controls are ready for them.

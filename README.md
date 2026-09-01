@@ -108,4 +108,8 @@ The task removes only `backups/orbit-*.dump` files older than the retention peri
 
 Commanders can see safe background-delivery health at `GET /api/operations/reliability`. It reports queue, scheduled-retry, and dead-letter counts only; job payloads and error details remain restricted to administrators.
 
+## Free HTTPS preview
+
+With the local API running, use `./scripts/start-quick-tunnel.ps1` to open a temporary Cloudflare HTTPS URL for Grafana webhook tests. It is intentionally a preview tool, not permanent hosting: its hostname changes whenever it restarts.
+
 The complete build sequence is in `docs/PROJECT_PHASES.md`.
