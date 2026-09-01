@@ -88,4 +88,20 @@ The backend identifies itself as version `0.6.0`.
 
 Production deployment uses `deploy/docker-compose.production.yml`, mounted secrets, and automatic migration execution before API startup.
 
+## Database backups
+
+Create a Docker database backup and keep the latest 14 days:
+
+```powershell
+.\scripts\backup-docker.ps1
+```
+
+Install a Windows daily task (default 02:30) for the same backup policy:
+
+```powershell
+.\scripts\install-backup-schedule.ps1
+```
+
+The task removes only `backups/orbit-*.dump` files older than the retention period. Verify every backup policy with a non-production restore drill.
+
 The complete build sequence is in `docs/PROJECT_PHASES.md`.
