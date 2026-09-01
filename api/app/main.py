@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
@@ -1300,6 +1301,28 @@ async def list_dead_letter_jobs(
     except Exception as exc:
         raise HTTPException(503, "Job queue is unavailable") from exc
     return [{"stream_id": stream_id, **fields} for stream_id, fields in rows]
+
+
+@app.get("/api/operations/reliability")
+async def delivery_reliability(
+    _: CurrentUser = Depends(require_roles("commander", "admin")),
+):
+    """Safe queue health summary; job payloads and errors remain admin-only."""
+    try:
+        client = await job_queue.redis()
+        dead_letter_count, retry_count, queued_count = await asyncio.gather(
+            client.xlen("orbit:jobs:dead-letter"),
+            client.zcard("orbit:jobs:retry"),
+            client.xlen("orbit:jobs"),
+        )
+    except Exception as exc:
+        raise HTTPException(503, "Job queue is unavailable") from exc
+    return {
+        "status": "attention" if dead_letter_count else "healthy",
+        "dead_letter_count": dead_letter_count,
+        "retry_scheduled_count": retry_count,
+        "queued_count": queued_count,
+    }
 
 
 @app.websocket("/ws/incidents/{incident_id}")

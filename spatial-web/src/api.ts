@@ -27,6 +27,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const orbitApi = {
   listIncidents: () => request<Incident[]>("/api/incidents"),
+  deliveryReliability: () => request<{ status: "healthy" | "attention"; dead_letter_count: number; retry_scheduled_count: number; queued_count: number }>("/api/operations/reliability"),
   incidentTemplates: () => request<Array<{ id: string; name: string; service: string; severity: string }>>("/api/incident-templates"),
   createFromTemplate: (templateId: string) => request<Incident>(`/api/incident-templates/${templateId}/incidents`, { method: "POST", body: "{}" }),
   voiceToken: (incidentId: string) => request<{ app_id: string; channel: string; uid: number; token: string }>(`/api/incidents/${incidentId}/voice/rtc-token`, { method: "POST", body: "{}" }),

@@ -104,4 +104,8 @@ Install a Windows daily task (default 02:30) for the same backup policy:
 
 The task removes only `backups/orbit-*.dump` files older than the retention period. Verify every backup policy with a non-production restore drill.
 
+## Delivery reliability
+
+Commanders can see safe background-delivery health at `GET /api/operations/reliability`. It reports queue, scheduled-retry, and dead-letter counts only; job payloads and error details remain restricted to administrators.
+
 The complete build sequence is in `docs/PROJECT_PHASES.md`.

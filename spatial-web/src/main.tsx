@@ -77,6 +77,7 @@ function App() {
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; service: string; severity: string }>>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateStatus, setTemplateStatus] = useState("");
+  const [reliability, setReliability] = useState<{ dead_letter_count: number; retry_scheduled_count: number } | null>(null);
   const [voiceStatus, setVoiceStatus] = useState("");
   const [voiceMuted, setVoiceMuted] = useState(false);
   const voiceClient = useRef<IAgoraRTCClient | null>(null);
@@ -108,6 +109,7 @@ function App() {
     }).catch(() => setAuthStatus("SIGN-IN FAILED"));
   }, [refresh]);
   useEffect(() => { orbitApi.incidentTemplates().then(setTemplates).catch(() => undefined); }, [signedIn]);
+  useEffect(() => { orbitApi.deliveryReliability().then(setReliability).catch(() => setReliability(null)); }, [signedIn]);
   const declareTemplate = async () => {
     if (!templateId) return;
     const selected = templates.find((template) => template.id === templateId);
@@ -308,7 +310,7 @@ function App() {
     <SpatialCommandCenter modules={modules} mode={modeFor(snapshot)} onActiveChange={handleActiveChange} onOpen={handleOpen} />
     <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select>{templates.length > 0 && <><select value={templateId} onChange={(event) => setTemplateId(event.target.value)}><option value="">DECLARE TEMPLATE</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.severity} / {template.name}</option>)}</select><button onClick={declareTemplate} disabled={!templateId}>DECLARE</button></>}<button onClick={refresh}>SYNC</button>{oidcEnabled && <button onClick={() => signedIn ? logout() : void startLogin()}>{signedIn ? "SIGN OUT" : "SIGN IN"}</button>}</div><span>{templateStatus || authStatus || (oidcEnabled ? (signedIn ? "OIDC AUTHENTICATED" : "SIGN-IN REQUIRED") : (error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"))}</span></header>
     <aside className="frame-left"><span>OPERATIONAL RESPONSE</span><span>VOICE / EVIDENCE / ACTION</span></aside>
-    <aside className="frame-right"><span>ROOT CAUSE</span><b>UNCONFIRMED</b><span>HUMAN AUTHORITY</span><b>PRESERVED</b></aside>
+    <aside className="frame-right"><span>ROOT CAUSE</span><b>UNCONFIRMED</b><span>HUMAN AUTHORITY</span><b>PRESERVED</b><span>DELIVERY</span><b>{reliability?.dead_letter_count ? `${reliability.dead_letter_count} FAILED` : reliability ? "HEALTHY" : "CHECKING"}</b></aside>
     <div className="active-caption"><span>{active.index} / {active.eyebrow}</span><h1>{active.title}</h1><p>{active.summary}</p><button onClick={() => setOpenId(active.id)}>OPEN SURFACE</button></div>
     <div className="spatial-instructions"><span>DRAG / SCROLL / ARROW KEYS</span><div>{modules.map((item, index) => <i className={index === activeIndex ? "active" : ""} key={item.id} />)}</div><span>{loading ? "SYNCHRONIZING" : `${activeIndex + 1} OF ${modules.length}`}</span></div>
 
