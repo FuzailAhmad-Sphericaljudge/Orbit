@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+dist/
+.pytest_cache/
+cloudflared.exe
+Orbit/
+desktop.ini
+.next/
+postgres-data/
+deploy/secrets/*.txt
+backups/
+*.dump

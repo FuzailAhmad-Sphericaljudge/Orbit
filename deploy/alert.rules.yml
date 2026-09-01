@@ -1,0 +1,18 @@
+sgroups:
+  - name: orbit-slos
+    rules:
+      - alert: OrbitApiHighErrorRate
+        expr: sum(rate(orbit_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(orbit_http_requests_total[5m])), 0.001) > 0.01
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "ORBIT API error rate exceeds 1%" }
+      - alert: OrbitApiLatencySLOBreach
+        expr: histogram_quantile(0.95, sum by (le) (rate(orbit_http_request_duration_seconds_bucket[5m]))) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "ORBIT API p95 latency exceeds 500 ms" }
+      - alert: OrbitInvestigationFailures
+        expr: increase(orbit_investigation_runs_total{status="failed"}[15m]) > 2
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Repeated ORBIT investigation failures" }

@@ -1,0 +1,111 @@
+services:
+  db:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orbit
+      POSTGRES_USER: orbit
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbit -d orbit"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass $$(cat /run/secrets/redis_password)"]
+    secrets: [redis_password]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$(cat /run/secrets/redis_password) ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ../api
+    restart: unless-stopped
+    environment: &api-environment
+      ENVIRONMENT: production
+      AUTO_CREATE_SCHEMA: "false"
+      REDIS_REQUIRED: "true"
+      DATABASE_URL_FILE: /run/secrets/database_url
+      REDIS_URL_FILE: /run/secrets/redis_url
+      AUTH_JWT_SECRET_FILE: /run/secrets/jwt_secret
+      DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
+      CORS_ORIGINS: ${ORBIT_CORS_ORIGINS:?Set ORBIT_CORS_ORIGINS}
+      TRUSTED_HOSTS: ${ORBIT_TRUSTED_HOSTS:?Set ORBIT_TRUSTED_HOSTS}
+      RATE_LIMIT_REQUESTS_PER_MINUTE: ${ORBIT_RATE_LIMIT:-240}
+      RETENTION_DAYS: ${ORBIT_RETENTION_DAYS:-90}
+      WEB_CONCURRENCY: ${ORBIT_WEB_CONCURRENCY:-2}
+      OIDC_JWKS_URL: ${ORBIT_OIDC_JWKS_URL:-}
+      OIDC_ISSUER: ${ORBIT_OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${ORBIT_OIDC_AUDIENCE:-}
+      OIDC_ROLES_CLAIM: ${ORBIT_OIDC_ROLES_CLAIM:-roles}
+    secrets: &api-secrets [database_url, redis_url, jwt_secret, data_encryption_key]
+    ports: ["8000:8000"]
+    command: ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers $${WEB_CONCURRENCY:-2}"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+
+  worker:
+    build: ../api
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment: *api-environment
+    secrets: *api-secrets
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+
+  migrate:
+    build: ../api
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-environment
+    secrets: *api-secrets
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+
+  web:
+    build:
+      context: ../spatial-web
+      args:
+        VITE_API_BASE_URL: ${ORBIT_PUBLIC_API_URL:?Set ORBIT_PUBLIC_API_URL}
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    security_opt: [no-new-privileges:true]
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus-data:/prometheus
+    depends_on: [api]
+
+volumes:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+
+secrets:
+  postgres_password: { file: ./secrets/postgres_password.txt }
+  database_url: { file: ./secrets/database_url.txt }
+  redis_password: { file: ./secrets/redis_password.txt }
+  redis_url: { file: ./secrets/redis_url.txt }
+  jwt_secret: { file: ./secrets/jwt_secret.txt }
+  data_encryption_key: { file: ./secrets/data_encryption_key.txt }

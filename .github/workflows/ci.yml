@@ -1,0 +1,60 @@
+name: ORBIT CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg16-bookworm
+        env:
+          POSTGRES_DB: orbit_test
+          POSTGRES_USER: orbit
+          POSTGRES_PASSWORD: orbit_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U orbit -d orbit_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://orbit:orbit_test@localhost:5432/orbit_test
+      REDIS_URL: redis://localhost:6379/0
+      REDIS_REQUIRED: "true"
+      AUTO_CREATE_SCHEMA: "false"
+      AUTH_JWT_SECRET: ci-only-secret-that-is-at-least-32-characters
+      DATA_ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: api
+        run: pip install fastapi "uvicorn[standard]" sqlalchemy "psycopg[binary]" pydantic-settings agora-agents httpx "PyJWT[crypto]" prometheus-client pgvector alembic "redis[hiredis]" cryptography
+      - name: Apply and verify migrations
+        working-directory: api
+        run: |
+          alembic upgrade head
+          alembic check
+      - name: Run backend tests
+        working-directory: api
+        run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build frontend
+        working-directory: web
+        run: npm install && npm run build
+      - name: Build spatial command center
+        working-directory: spatial-web
+        run: npm ci && npm run build
+      - name: Build deployment images
+        run: docker compose build
