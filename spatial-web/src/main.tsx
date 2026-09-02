@@ -112,7 +112,19 @@ function App() {
   const openModule = modules.find((item) => item.id === openId) ?? null;
   const detailRows = rowsFor(openId ?? "", snapshot).slice(0, 30);
   const handleActiveChange = useCallback((index: number) => setActiveIndex(index), []);
-  const handleOpen = useCallback((id: string) => setOpenId(id), []);
+  const handleOpen = useCallback((id: string) => {
+    window.history.pushState({ orbitSurface: id }, "");
+    setOpenId(id);
+  }, []);
+  const closeSurface = useCallback(() => {
+    if (window.history.state?.orbitSurface) window.history.back();
+    else setOpenId(null);
+  }, []);
+  useEffect(() => {
+    const onPopState = () => setOpenId(null);
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   useEffect(() => {
     completeLogin().then((completed) => {
       if (completed) {
@@ -325,11 +337,11 @@ function App() {
     <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select>{templates.length > 0 && <><select value={templateId} onChange={(event) => setTemplateId(event.target.value)}><option value="">DECLARE TEMPLATE</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.severity} / {template.name}</option>)}</select><button onClick={declareTemplate} disabled={!templateId}>DECLARE</button></>}<button onClick={refresh}>SYNC</button>{oidcEnabled && <button onClick={() => signedIn ? logout() : void startLogin()}>{signedIn ? "SIGN OUT" : "SIGN IN"}</button>}</div><span>{templateStatus || authStatus || (oidcEnabled ? (signedIn ? "OIDC AUTHENTICATED" : "SIGN-IN REQUIRED") : (error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"))}</span></header>
     <aside className="frame-left"><span>OPERATIONAL RESPONSE</span><span>VOICE / EVIDENCE / ACTION</span></aside>
     <aside className="frame-right"><span>ROOT CAUSE</span><b>UNCONFIRMED</b><span>HUMAN AUTHORITY</span><b>PRESERVED</b><span>DELIVERY</span><b>{reliability?.dead_letter_count ? `${reliability.dead_letter_count} FAILED` : reliability ? "HEALTHY" : "CHECKING"}</b></aside>
-    <div className="active-caption"><span>{active.index} / {active.eyebrow}</span><h1>{active.title}</h1><p>{active.summary}</p><button onClick={() => setOpenId(active.id)}>OPEN SURFACE</button></div>
+    <div className="active-caption"><span>{active.index} / {active.eyebrow}</span><h1>{active.title}</h1><p>{active.summary}</p><button onClick={() => handleOpen(active.id)}>OPEN SURFACE</button></div>
     <div className="spatial-instructions"><span>DRAG / SCROLL / ARROW KEYS</span><div>{modules.map((item, index) => <i className={index === activeIndex ? "active" : ""} key={item.id} />)}</div><span>{loading ? "SYNCHRONIZING" : `${activeIndex + 1} OF ${modules.length}`}</span></div>
 
     {openModule && <section className="detail-layer" aria-modal="true" role="dialog">
-      <button className="detail-close" onClick={() => setOpenId(null)} aria-label="Close surface">×</button>
+      <button className="detail-close" onClick={closeSurface} aria-label="Close surface">×</button>
       <div className="detail-title"><span>{openModule.index} / {openModule.eyebrow}</span><h2>{openModule.title}</h2><p>{openModule.summary}</p><dl><div><dt>Metric</dt><dd>{openModule.metric}</dd></div><div><dt>State</dt><dd>{snapshot?.incident.status ?? "standby"}</dd></div><div><dt>Root cause</dt><dd>unconfirmed</dd></div></dl></div>
       <div className="detail-data"><header><span>LIVE INCIDENT DATA</span><span>{detailRows.length} RECORDS</span></header>{detailRows.length ? detailRows.map((row, index) => <article key={`${row.primary}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{row.primary}</h3><p>{row.secondary}</p></div><b>{row.status.replaceAll("_", " ")}</b></article>) : <p className="detail-empty">This surface is ready. Live records will appear when an incident is declared.</p>}</div>
       {openModule.id === "prediction" && <div className="prediction-controls"><span>{labStatus || "LIVE LEARNING READY"}</span><button onClick={ingestLiveSignals} disabled={!incidentId}>INGEST SIGNALS</button><button onClick={runPaymentForecast} disabled={!incidentId}>FORECAST</button><button onClick={runTrafficShiftSimulation} disabled={!snapshot?.prediction_engine?.latest}>SIMULATE</button><button onClick={evaluateLatestForecast} disabled={!snapshot?.prediction_engine?.latest}>EVALUATE</button><button onClick={runProductionLearning} disabled={!incidentId}>LEARN</button></div>}
