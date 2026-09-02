@@ -85,6 +85,7 @@ function App() {
   const [evidenceSource, setEvidenceSource] = useState("");
   const [evidenceConfidence, setEvidenceConfidence] = useState("90");
   const [evidenceStatus, setEvidenceStatus] = useState("");
+  const [actionStatus, setActionStatus] = useState("");
   const [reportStatus, setReportStatus] = useState("");
   const [signedIn, setSignedIn] = useState(() => hasAccessToken());
   const [authStatus, setAuthStatus] = useState("");
@@ -254,6 +255,14 @@ function App() {
       await refresh();
     } catch (reason) { setEvidenceStatus(reason instanceof Error ? `EVIDENCE FAILED / ${reason.message}` : "EVIDENCE RECORDING FAILED"); }
   };
+  const completeAction = async (action: { id: string; task: string }) => {
+    if (!incidentId || !window.confirm(`Mark this action complete?\n\n${action.task}`)) return;
+    try {
+      await orbitApi.completeAction(incidentId, action.id);
+      setActionStatus("ACTION COMPLETED");
+      await refresh();
+    } catch (reason) { setActionStatus(reason instanceof Error ? `ACTION FAILED / ${reason.message}` : "ACTION UPDATE FAILED"); }
+  };
   const finalizeReport = async (reportId: string) => {
     if (!incidentId) return;
     try {
@@ -346,6 +355,7 @@ function App() {
       <div className="detail-data"><header><span>LIVE INCIDENT DATA</span><span>{detailRows.length} RECORDS</span></header>{detailRows.length ? detailRows.map((row, index) => <article key={`${row.primary}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{row.primary}</h3><p>{row.secondary}</p></div><b>{row.status.replaceAll("_", " ")}</b></article>) : <p className="detail-empty">This surface is ready. Live records will appear when an incident is declared.</p>}</div>
       {openModule.id === "prediction" && <div className="prediction-controls"><span>{labStatus || "LIVE LEARNING READY"}</span><button onClick={ingestLiveSignals} disabled={!incidentId}>INGEST SIGNALS</button><button onClick={runPaymentForecast} disabled={!incidentId}>FORECAST</button><button onClick={runTrafficShiftSimulation} disabled={!snapshot?.prediction_engine?.latest}>SIMULATE</button><button onClick={evaluateLatestForecast} disabled={!snapshot?.prediction_engine?.latest}>EVALUATE</button><button onClick={runProductionLearning} disabled={!incidentId}>LEARN</button></div>}
       {openModule.id === "truth" && <div className="prediction-controls recovery-controls"><span>{evidenceStatus || "RECORD VERIFIED EVIDENCE"}</span><input value={evidenceClaim} onChange={(event) => setEvidenceClaim(event.target.value)} placeholder="Verified claim" /><input value={evidenceSource} onChange={(event) => setEvidenceSource(event.target.value)} placeholder="Source system or person" /><input value={evidenceConfidence} onChange={(event) => setEvidenceConfidence(event.target.value)} inputMode="numeric" placeholder="Confidence 0-100" /><button onClick={addEvidence} disabled={!incidentId}>ADD EVIDENCE</button></div>}
+      {openModule.id === "actions" && <div className="prediction-controls recovery-controls"><span>{actionStatus || "COMMANDER CONFIRMATION REQUIRED"}</span>{snapshot?.actions.filter((action) => action.status !== "complete").map((action) => <button key={action.id} onClick={() => completeAction(action)}>COMPLETE / {action.task}</button>)}</div>}
       {openModule.id === "commander" && <div className="prediction-controls"><span>{voiceStatus || "VOICE ROOM STANDBY"}</span><button onClick={joinVoiceRoom} disabled={!incidentId || Boolean(voiceClient.current)}>JOIN VOICE ROOM</button><button onClick={toggleVoiceMute} disabled={!voiceClient.current}>{voiceMuted ? "UNMUTE" : "MUTE"}</button><button onClick={leaveVoiceRoom} disabled={!voiceClient.current}>LEAVE ROOM</button></div>}
       {openModule.id === "systems" && <div className="prediction-controls"><span>{certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
       {openModule.id === "recovery" && <div className="prediction-controls recovery-controls"><span>{recoveryStatus || (snapshot?.recovery.ready ? "READY FOR HUMAN CONFIRMATION" : `${snapshot?.recovery.blockers.length ?? 0} BLOCKERS REMAIN`)}</span><button onClick={reviewRecovery} disabled={!incidentId}>RECHECK RECOVERY</button>{recoveryChecks.map((check) => <div className="recovery-check" key={check.id}><strong>{check.status.toUpperCase()} / {check.criterion}</strong>{check.status !== "passed" && <><input value={recoveryObservation} onChange={(event) => setRecoveryObservation(event.target.value)} placeholder="Verified observation" /><input value={recoveryEvidenceIds} onChange={(event) => setRecoveryEvidenceIds(event.target.value)} placeholder="Evidence ID(s), comma-separated" /><button onClick={() => updateRecoveryCheck(check, "passed")}>MARK PASSED</button><button onClick={() => updateRecoveryCheck(check, "failed")}>MARK FAILED</button></>}</div>)}{snapshot?.recovery.ready && <><input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Human resolution note (10+ characters)" /><button onClick={resolveIncident}>CONFIRM AND RESOLVE</button></>}</div>}

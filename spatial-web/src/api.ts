@@ -35,6 +35,7 @@ export const orbitApi = {
   stopVoiceSession: (incidentId: string, sessionId: string) => request<{ id: string }>(`/api/incidents/${incidentId}/voice/sessions/${sessionId}/stop`, { method: "POST" }),
   commandCenter: (incidentId: string) => request<CommandCenterSnapshot>(`/api/incidents/${incidentId}/command-center`),
   addEvidence: (incidentId: string, payload: { claim: string; classification: "confirmed_fact" | "hypothesis" | "decision"; confidence: number; source: string }) => request<{ id: string }>(`/api/incidents/${incidentId}/evidence`, { method: "POST", body: JSON.stringify(payload) }),
+  completeAction: (incidentId: string, actionId: string) => request<{ id: string; status: string }>(`/api/incidents/${incidentId}/actions/${actionId}`, { method: "PATCH", body: JSON.stringify({ status: "complete" }) }),
   recoveryReadiness: (incidentId: string) => request<{ ready: boolean; checks_total: number; checks_passed: number; blockers: string[]; requires_human_confirmation: boolean }>(`/api/incidents/${incidentId}/recovery/readiness`),
   recoveryChecks: (incidentId: string) => request<RecoveryCheck[]>(`/api/incidents/${incidentId}/recovery/checks`),
   updateRecoveryCheck: (incidentId: string, checkId: string, payload: { status: "passed" | "failed"; observation: string; evidence_ids: string[] }) => request<RecoveryCheck>(`/api/incidents/${incidentId}/recovery/checks/${checkId}`, { method: "PATCH", body: JSON.stringify(payload) }),
