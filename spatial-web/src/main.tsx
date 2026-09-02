@@ -7,6 +7,7 @@ import type { CommandCenterSnapshot, RecoveryCheck } from "./types";
 import { API_BASE, orbitApi } from "./api";
 import { completeLogin, hasAccessToken, logout, oidcEnabled, startLogin } from "./oidc";
 import "./styles.css";
+import "./responsive.css";
 
 type DetailRow = { primary: string; secondary: string; status: string };
 
