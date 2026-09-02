@@ -235,12 +235,12 @@ function App() {
     const confidence = Number(evidenceConfidence);
     if (!Number.isInteger(confidence) || confidence < 0 || confidence > 100) return setEvidenceStatus("CONFIDENCE MUST BE 0-100");
     try {
-      await orbitApi.addEvidence(incidentId, { claim: evidenceClaim.trim(), classification: "fact", confidence, source: evidenceSource.trim() });
+      await orbitApi.addEvidence(incidentId, { claim: evidenceClaim.trim(), classification: "confirmed_fact", confidence, source: evidenceSource.trim() });
       setEvidenceClaim("");
       setEvidenceSource("");
       setEvidenceStatus("EVIDENCE RECORDED");
       await refresh();
-    } catch { setEvidenceStatus("EVIDENCE RECORDING FAILED"); }
+    } catch (reason) { setEvidenceStatus(reason instanceof Error ? `EVIDENCE FAILED / ${reason.message}` : "EVIDENCE RECORDING FAILED"); }
   };
   const finalizeReport = async (reportId: string) => {
     if (!incidentId) return;
