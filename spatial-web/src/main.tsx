@@ -9,6 +9,7 @@ import { completeLogin, hasAccessToken, logout, oidcEnabled, startLogin } from "
 import "./styles.css";
 import "./responsive.css";
 import "./public-pages.css";
+import "./control-layout.css";
 
 type DetailRow = { primary: string; secondary: string; status: string };
 
