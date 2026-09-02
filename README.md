@@ -112,4 +112,8 @@ Commanders can see safe background-delivery health at `GET /api/operations/relia
 
 With the local API running, use `./scripts/start-quick-tunnel.ps1` to open a temporary Cloudflare HTTPS URL for Grafana webhook tests. It is intentionally a preview tool, not permanent hosting: its hostname changes whenever it restarts.
 
+## Public-release security gate
+
+Before exposing ORBIT publicly, follow [the security release checklist](docs/SECURITY_RELEASE_CHECKLIST.md) and run `./scripts/security-preflight.ps1 -ForPublicDeployment -KeycloakAdminHardened`. The script validates configuration without printing secret values.
+
 The complete build sequence is in `docs/PROJECT_PHASES.md`.
