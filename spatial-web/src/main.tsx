@@ -100,6 +100,8 @@ function App() {
   const [reliability, setReliability] = useState<{ dead_letter_count: number; retry_scheduled_count: number } | null>(null);
   const [voiceStatus, setVoiceStatus] = useState("");
   const [voiceMuted, setVoiceMuted] = useState(false);
+  const [participantName, setParticipantName] = useState("");
+  const [participantRole, setParticipantRole] = useState("commander");
   const voiceClient = useRef<IAgoraRTCClient | null>(null);
   const microphone = useRef<IMicrophoneAudioTrack | null>(null);
   const voiceSessionId = useRef<string | null>(null);
@@ -357,6 +359,23 @@ function App() {
       await refresh();
     }
   };
+  const registerParticipant = async () => {
+    if (!incidentId || participantName.trim().length < 2 || participantRole.trim().length < 2) return setVoiceStatus("ADD A PARTICIPANT NAME AND ROLE");
+    try {
+      await orbitApi.addParticipant(incidentId, { agora_uid: `role-${crypto.randomUUID()}`, display_name: participantName.trim(), role: participantRole.trim(), language: "en-US" });
+      setParticipantName("");
+      setVoiceStatus("ROLE REGISTERED");
+      await refresh();
+    } catch (reason) { setVoiceStatus(reason instanceof Error ? `ROLE FAILED / ${reason.message}` : "ROLE REGISTRATION FAILED"); }
+  };
+  const speakBriefing = async () => {
+    if (!incidentId || !voiceSessionId.current) return setVoiceStatus("JOIN THE VOICE ROOM FIRST");
+    try {
+      await orbitApi.generateBriefing(incidentId, { audience: "executive", speak: true, voice_session_id: voiceSessionId.current });
+      setVoiceStatus("SPOKEN BRIEFING DELIVERED");
+      await refresh();
+    } catch (reason) { setVoiceStatus(reason instanceof Error ? `BRIEFING FAILED / ${reason.message}` : "SPOKEN BRIEFING FAILED"); }
+  };
 
   return <main className="spatial-app" style={{ "--accent": active.accent, "--accent-secondary": active.accentSecondary } as CSSProperties}>
     <SpatialCommandCenter modules={modules} mode={modeFor(snapshot)} onActiveChange={handleActiveChange} onOpen={handleOpen} />
@@ -373,7 +392,7 @@ function App() {
       {openModule.id === "prediction" && <div className="prediction-controls"><span>{labStatus || "LIVE LEARNING READY"}</span><button onClick={ingestLiveSignals} disabled={!incidentId}>INGEST SIGNALS</button><button onClick={runPaymentForecast} disabled={!incidentId}>FORECAST</button><button onClick={runTrafficShiftSimulation} disabled={!snapshot?.prediction_engine?.latest}>SIMULATE</button><button onClick={evaluateLatestForecast} disabled={!snapshot?.prediction_engine?.latest}>EVALUATE</button><button onClick={runProductionLearning} disabled={!incidentId}>LEARN</button></div>}
       {openModule.id === "truth" && <div className="prediction-controls recovery-controls"><span>{evidenceStatus || "RECORD EVIDENCE"}</span><select aria-label="Evidence classification" value={evidenceClassification} onChange={(event) => setEvidenceClassification(event.target.value as "confirmed_fact" | "hypothesis" | "decision" | "action")}><option value="confirmed_fact">Confirmed fact</option><option value="hypothesis">Hypothesis</option><option value="decision">Decision</option><option value="action">Action</option></select><input value={evidenceClaim} onChange={(event) => setEvidenceClaim(event.target.value)} placeholder="Claim, decision, or action" /><input value={evidenceSource} onChange={(event) => setEvidenceSource(event.target.value)} placeholder="Source system or person" /><input value={evidenceConfidence} onChange={(event) => setEvidenceConfidence(event.target.value)} inputMode="numeric" placeholder="Confidence 0-100" /><button onClick={addEvidence} disabled={!incidentId}>ADD EVIDENCE</button></div>}
       {openModule.id === "actions" && <div className="prediction-controls recovery-controls"><span>{actionStatus || "COMMANDER CONFIRMATION REQUIRED"}</span>{snapshot?.actions.filter((action) => action.status !== "complete").map((action) => <button key={action.id} onClick={() => completeAction(action)}>COMPLETE / {action.task}</button>)}</div>}
-      {openModule.id === "commander" && <div className="prediction-controls"><span>{voiceStatus || "VOICE ROOM STANDBY"}</span><button onClick={joinVoiceRoom} disabled={!incidentId || Boolean(voiceClient.current)}>JOIN VOICE ROOM</button><button onClick={toggleVoiceMute} disabled={!voiceClient.current}>{voiceMuted ? "UNMUTE" : "MUTE"}</button><button onClick={leaveVoiceRoom} disabled={!voiceClient.current}>LEAVE ROOM</button></div>}
+      {openModule.id === "commander" && <div className="prediction-controls recovery-controls"><span>{voiceStatus || "VOICE ROOM STANDBY"}</span><input value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Actual participant name" /><select aria-label="Participant role" value={participantRole} onChange={(event) => setParticipantRole(event.target.value)}><option value="commander">Commander</option><option value="investigator">Investigator</option><option value="communications">Communications</option><option value="operator">Operator</option></select><button onClick={registerParticipant} disabled={!incidentId}>REGISTER ROLE</button><button onClick={joinVoiceRoom} disabled={!incidentId || Boolean(voiceClient.current)}>JOIN VOICE ROOM</button><button onClick={speakBriefing} disabled={!voiceClient.current}>SPEAK BRIEFING</button><button onClick={toggleVoiceMute} disabled={!voiceClient.current}>{voiceMuted ? "UNMUTE" : "MUTE"}</button><button onClick={leaveVoiceRoom} disabled={!voiceClient.current}>LEAVE ROOM</button></div>}
       {openModule.id === "systems" && <div className="prediction-controls"><span>{certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
       {openModule.id === "recovery" && <div className="prediction-controls recovery-controls"><span>{recoveryStatus || (snapshot?.recovery.ready ? "READY FOR HUMAN CONFIRMATION" : `${snapshot?.recovery.blockers.length ?? 0} BLOCKERS REMAIN`)}</span><button onClick={reviewRecovery} disabled={!incidentId}>RECHECK RECOVERY</button>{recoveryChecks.map((check) => <div className="recovery-check" key={check.id}><strong>{check.status.toUpperCase()} / {check.criterion}</strong>{check.status !== "passed" && <><input value={recoveryObservation} onChange={(event) => setRecoveryObservation(event.target.value)} placeholder="Verified observation" /><input value={recoveryEvidenceIds} onChange={(event) => setRecoveryEvidenceIds(event.target.value)} placeholder="Evidence ID(s), comma-separated" /><button onClick={() => updateRecoveryCheck(check, "passed")}>MARK PASSED</button><button onClick={() => updateRecoveryCheck(check, "failed")}>MARK FAILED</button></>}</div>)}{snapshot?.recovery.ready && <><input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Human resolution note (10+ characters)" /><button onClick={resolveIncident}>CONFIRM AND RESOLVE</button></>}</div>}
       {openModule.id === "report" && <div className="prediction-controls recovery-controls"><span>{reportStatus || "DRAFTS REQUIRE COMMANDER CONFIRMATION"}</span><button onClick={downloadHumanReport} disabled={!incidentId}>DOWNLOAD HUMAN REPORT</button><button onClick={downloadAudit} disabled={!incidentId}>EXPORT AUDIT (JSON)</button>{snapshot?.reports.filter((report) => report.status !== "final").map((report) => <button key={report.id} onClick={() => finalizeReport(report.id)}>FINALIZE {report.type.toUpperCase()}</button>)}</div>}
