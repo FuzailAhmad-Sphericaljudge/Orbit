@@ -34,7 +34,7 @@ function StatusPage() {
 function rowsFor(id: string, snapshot: CommandCenterSnapshot | null): DetailRow[] {
   if (!snapshot) return [];
   if (id === "commander") return snapshot.live_room.participants.map((item) => ({ primary: item.display_name, secondary: `${item.role} / ${item.language}`, status: snapshot.live_room.active ? "in room" : "registered" }));
-  if (id === "truth") return [...snapshot.evidence.map((item) => ({ primary: item.claim, secondary: `${item.source} / ${item.confidence}% confidence`, status: item.classification })), ...snapshot.unknowns.map((item) => ({ primary: item.question, secondary: `priority / ${item.priority}`, status: item.status }))];
+  if (id === "truth") return [...snapshot.evidence.map((item) => ({ primary: item.claim, secondary: `${item.source} / ${item.confidence}% confidence / evidence ID ${item.id}`, status: item.classification })), ...snapshot.unknowns.map((item) => ({ primary: item.question, secondary: `priority / ${item.priority}`, status: item.status }))];
   if (id === "timeline") return snapshot.timeline.slice().reverse().map((item) => ({ primary: item.summary, secondary: new Date(item.created_at).toLocaleTimeString(), status: item.event_type }));
   if (id === "actions") return snapshot.actions.map((item) => ({ primary: item.task, secondary: `owner / ${item.owner_id}`, status: item.overdue ? "overdue" : item.status }));
   if (id === "investigation") return [...snapshot.intelligence.findings.map((item) => ({ primary: item.title, secondary: item.description, status: item.status })), ...snapshot.intelligence.analyses.map((item) => ({ primary: item.summary, secondary: item.limitations.join(" / ") || "No limitation recorded", status: `${item.confidence}%` }))];
