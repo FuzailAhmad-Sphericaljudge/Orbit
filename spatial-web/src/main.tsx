@@ -8,11 +8,23 @@ import { API_BASE, orbitApi } from "./api";
 import { completeLogin, hasAccessToken, logout, oidcEnabled, startLogin } from "./oidc";
 import "./styles.css";
 import "./responsive.css";
+import "./public-pages.css";
 
 type DetailRow = { primary: string; secondary: string; status: string };
 
+function PublicDocumentPage({ type }: { type: "privacy" | "terms" | "not-found" }) {
+  const details = type === "privacy"
+    ? { title: "Privacy notice", label: "PRIVACY", body: "ORBIT processes incident records, evidence, voice transcripts, and account identity only to provide the incident-command service. Access is role-controlled and incident data follows the configured retention policy. Do not submit secrets in incident text, evidence, or external-tool payloads." }
+    : type === "terms"
+      ? { title: "Terms of use", label: "TERMS", body: "ORBIT is a human-governed operational tool. Automated suggestions do not replace incident-command authority. You are responsible for validating actions, protecting credentials, and ensuring use complies with your organisation's policies and applicable law." }
+      : { title: "Page not found", label: "404", body: "The address does not point to an ORBIT public page. Return to the command center or view public service status." };
+  useEffect(() => { document.title = `${details.title} — ORBIT`; }, [details.title]);
+  return <main className="public-document"><header><a href="/">ORBIT</a><nav><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a><a href="/terms">TERMS</a></nav></header><section><span>{details.label}</span><h1>{details.title}</h1><p>{details.body}</p><a className="status-command-link" href={type === "not-found" ? "/" : "/status"}>{type === "not-found" ? "OPEN COMMAND CENTER" : "VIEW SERVICE STATUS"}</a></section></main>;
+}
+
 function StatusPage() {
   const [status, setStatus] = useState<{ status: string; updated_at: string; components: Array<{ name: string; status: string }> } | null>(null);
+  useEffect(() => { document.title = "Service status — ORBIT"; }, []);
   useEffect(() => { fetch(`${API_BASE}/api/status`).then((response) => response.json()).then(setStatus).catch(() => setStatus({ status: "unknown", updated_at: new Date().toISOString(), components: [] })); }, []);
   const label = (value: string) => value.replaceAll("_", " ");
   return <main className="public-status"><header><b>ORBIT</b><span>PUBLIC SERVICE STATUS</span></header><section><p className={`status-dot ${status?.status ?? "unknown"}`}>{label(status?.status ?? "checking")}</p><h1>{status?.status === "operational" ? "All systems operational" : "Service disruption detected"}</h1><p>Last updated {status ? new Date(status.updated_at).toLocaleString() : "now"}</p><a className="status-command-link" href="/">OPEN COMMAND CENTER</a><div className="status-components">{status?.components.length ? status.components.map((component) => <article key={component.name}><span>{component.name}</span><b className={component.status}>{label(component.status)}</b></article>) : <article><span>ORBIT platform</span><b className="operational">operational</b></article>}</div></section></main>;
@@ -329,4 +341,6 @@ function App() {
   </main>;
 }
 
-createRoot(document.getElementById("root")!).render(window.location.pathname === "/status" ? <StatusPage /> : <App />);
+const path = window.location.pathname;
+const publicPage = path === "/status" ? <StatusPage /> : path === "/privacy" ? <PublicDocumentPage type="privacy" /> : path === "/terms" ? <PublicDocumentPage type="terms" /> : path === "/" ? <App /> : <PublicDocumentPage type="not-found" />;
+createRoot(document.getElementById("root")!).render(publicPage);
