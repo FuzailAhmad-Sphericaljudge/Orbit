@@ -34,6 +34,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       REDIS_REQUIRED: "true"
       AUTO_CREATE_SCHEMA: "false"
+      # Agora agent sessions are in-process; keep the local command API sticky to one worker.
+      WEB_CONCURRENCY: "1"
     ports:
       - "8000:8000"
     depends_on:
