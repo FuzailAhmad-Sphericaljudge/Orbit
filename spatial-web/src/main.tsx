@@ -80,6 +80,7 @@ function App() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [labStatus, setLabStatus] = useState("");
   const [certStatus, setCertStatus] = useState("");
+  const [monitoringStatus, setMonitoringStatus] = useState("");
   const [recoveryStatus, setRecoveryStatus] = useState("");
   const [recoveryChecks, setRecoveryChecks] = useState<RecoveryCheck[]>([]);
   const [recoveryObservation, setRecoveryObservation] = useState("");
@@ -270,6 +271,16 @@ function App() {
       await refresh();
     } catch (reason) { setActionStatus(reason instanceof Error ? `ACTION FAILED / ${reason.message}` : "ACTION UPDATE FAILED"); }
   };
+  const testMonitoring = async () => {
+    if (!incidentId) return;
+    setMonitoringStatus("PREPARING READ-ONLY PROMETHEUS QUERY");
+    try {
+      const prepared = await orbitApi.prepareTool(incidentId, { provider: "monitoring", operation: "query_snapshot", risk_level: "low", payload: { query: "up" }, rationale: "Staging connectivity check using the safe up metric.", idempotency_key: `monitoring-up-${incidentId}-${crypto.randomUUID()}` });
+      await orbitApi.executeTool(incidentId, prepared.id);
+      setMonitoringStatus("MONITORING QUERY SUCCEEDED");
+      await refresh();
+    } catch (reason) { setMonitoringStatus(reason instanceof Error ? `MONITORING FAILED / ${reason.message}` : "MONITORING QUERY FAILED"); }
+  };
   const finalizeReport = async (reportId: string) => {
     if (!incidentId) return;
     try {
@@ -393,7 +404,7 @@ function App() {
       {openModule.id === "truth" && <div className="prediction-controls recovery-controls"><span>{evidenceStatus || "RECORD EVIDENCE"}</span><select aria-label="Evidence classification" value={evidenceClassification} onChange={(event) => setEvidenceClassification(event.target.value as "confirmed_fact" | "hypothesis" | "decision" | "action")}><option value="confirmed_fact">Confirmed fact</option><option value="hypothesis">Hypothesis</option><option value="decision">Decision</option><option value="action">Action</option></select><input value={evidenceClaim} onChange={(event) => setEvidenceClaim(event.target.value)} placeholder="Claim, decision, or action" /><input value={evidenceSource} onChange={(event) => setEvidenceSource(event.target.value)} placeholder="Source system or person" /><input value={evidenceConfidence} onChange={(event) => setEvidenceConfidence(event.target.value)} inputMode="numeric" placeholder="Confidence 0-100" /><button onClick={addEvidence} disabled={!incidentId}>ADD EVIDENCE</button></div>}
       {openModule.id === "actions" && <div className="prediction-controls recovery-controls"><span>{actionStatus || "COMMANDER CONFIRMATION REQUIRED"}</span>{snapshot?.actions.filter((action) => action.status !== "complete").map((action) => <button key={action.id} onClick={() => completeAction(action)}>COMPLETE / {action.task}</button>)}</div>}
       {openModule.id === "commander" && <div className="prediction-controls recovery-controls"><span>{voiceStatus || "VOICE ROOM STANDBY"}</span><input value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Actual participant name" /><select aria-label="Participant role" value={participantRole} onChange={(event) => setParticipantRole(event.target.value)}><option value="commander">Commander</option><option value="investigator">Investigator</option><option value="communications">Communications</option><option value="operator">Operator</option></select><button onClick={registerParticipant} disabled={!incidentId}>REGISTER ROLE</button><button onClick={joinVoiceRoom} disabled={!incidentId || Boolean(voiceClient.current)}>JOIN VOICE ROOM</button><button onClick={speakBriefing} disabled={!voiceClient.current}>SPEAK BRIEFING</button><button onClick={toggleVoiceMute} disabled={!voiceClient.current}>{voiceMuted ? "UNMUTE" : "MUTE"}</button><button onClick={leaveVoiceRoom} disabled={!voiceClient.current}>LEAVE ROOM</button></div>}
-      {openModule.id === "systems" && <div className="prediction-controls"><span>{certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
+      {openModule.id === "systems" && <div className="prediction-controls"><span>{monitoringStatus || certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={testMonitoring} disabled={!incidentId}>TEST MONITORING</button><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
       {openModule.id === "recovery" && <div className="prediction-controls recovery-controls"><span>{recoveryStatus || (snapshot?.recovery.ready ? "READY FOR HUMAN CONFIRMATION" : `${snapshot?.recovery.blockers.length ?? 0} BLOCKERS REMAIN`)}</span><button onClick={reviewRecovery} disabled={!incidentId}>RECHECK RECOVERY</button>{recoveryChecks.map((check) => <div className="recovery-check" key={check.id}><strong>{check.status.toUpperCase()} / {check.criterion}</strong>{check.status !== "passed" && <><input value={recoveryObservation} onChange={(event) => setRecoveryObservation(event.target.value)} placeholder="Verified observation" /><input value={recoveryEvidenceIds} onChange={(event) => setRecoveryEvidenceIds(event.target.value)} placeholder="Evidence ID(s), comma-separated" /><button onClick={() => updateRecoveryCheck(check, "passed")}>MARK PASSED</button><button onClick={() => updateRecoveryCheck(check, "failed")}>MARK FAILED</button></>}</div>)}{snapshot?.recovery.ready && <><input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Human resolution note (10+ characters)" /><button onClick={resolveIncident}>CONFIRM AND RESOLVE</button></>}</div>}
       {openModule.id === "report" && <div className="prediction-controls recovery-controls"><span>{reportStatus || "DRAFTS REQUIRE COMMANDER CONFIRMATION"}</span><button onClick={downloadHumanReport} disabled={!incidentId}>DOWNLOAD HUMAN REPORT</button><button onClick={downloadAudit} disabled={!incidentId}>EXPORT AUDIT (JSON)</button>{snapshot?.reports.filter((report) => report.status !== "final").map((report) => <button key={report.id} onClick={() => finalizeReport(report.id)}>FINALIZE {report.type.toUpperCase()}</button>)}</div>}
     </section>}
