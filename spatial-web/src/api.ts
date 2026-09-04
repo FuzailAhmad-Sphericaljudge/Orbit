@@ -62,10 +62,10 @@ export const orbitApi = {
 
 export function incidentSocketUrl(incidentId: string): string | null {
   const token = localStorage.getItem("orbit_access_token");
-  if (!token) return null;
-  const url = new URL(API_BASE);
+  const base = API_BASE || window.location.origin;
+  const url = new URL(base);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `/ws/incidents/${incidentId}`;
-  url.searchParams.set("token", token);
+  if (token) url.searchParams.set("token", token);
   return url.toString();
 }
