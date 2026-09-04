@@ -222,6 +222,15 @@ function App() {
       setCertStatus(`CERTIFICATION ${result.status.toUpperCase()}`);
     } catch { setCertStatus("CERTIFICATION FAILED"); }
   };
+  const startFreshCertification = async () => {
+    if (!incidentId || !window.confirm("Start a new staging certification run? Previous measurements remain in the audit history, and you must collect the required performance evidence again.")) return;
+    setCertStatus("STARTING FRESH STAGING RUN");
+    try {
+      const result = await orbitApi.startCertification(incidentId);
+      await refresh();
+      setCertStatus(`FRESH CERTIFICATION ${result.status.toUpperCase()}`);
+    } catch { setCertStatus("FRESH CERTIFICATION FAILED"); }
+  };
   const reviewRecovery = async () => {
     if (!incidentId) return;
     setRecoveryStatus("VERIFYING RECOVERY GATE");
@@ -430,7 +439,6 @@ function App() {
   };
   const joinVoiceRoom = async () => {
     if (!incidentId || voiceClient.current) return;
-    const startedAt = performance.now();
     setVoiceStatus("REQUESTING MICROPHONE");
     let joiningClient: IAgoraRTCClient | null = null;
     let joiningTrack: IMicrophoneAudioTrack | null = null;
@@ -447,7 +455,9 @@ function App() {
       });
       joiningTrack = await AgoraRTC.createMicrophoneAudioTrack();
       phase = "RTC JOIN";
+      const joinStartedAt = performance.now();
       await joiningClient.join(room.app_id, room.channel, room.token, room.uid);
+      await recordMeasuredTiming("voice_join_latency_ms", joinStartedAt, "ORBIT browser Agora RTC join");
       await joiningClient.publish([joiningTrack]);
       phase = "AGENT START";
       const session = await orbitApi.startVoiceSession(incidentId, { channel: room.channel, remote_uids: [String(room.uid)], language: "en-US" });
@@ -455,7 +465,6 @@ function App() {
       microphone.current = joiningTrack;
       voiceSessionId.current = session.id;
       setVoiceMuted(false);
-      await recordMeasuredTiming("voice_join_latency_ms", startedAt, "ORBIT browser Agora join");
       setVoiceStatus("LIVE / MICROPHONE CONNECTED");
       await refresh();
     } catch (reason) {
@@ -524,7 +533,7 @@ function App() {
       {openModule.id === "actions" && <div className="prediction-controls recovery-controls"><span>{actionStatus || "COMMANDER CONFIRMATION REQUIRED"}</span>{snapshot?.actions.filter((action) => action.status !== "complete").map((action) => <button key={action.id} onClick={() => completeAction(action)}>COMPLETE / {action.task}</button>)}</div>}
       {openModule.id === "investigation" && <div className="prediction-controls"><span>{investigationStatus || "INVESTIGATION READY"}</span><button onClick={recordStagingConflict} disabled={!incidentId}>RECORD STAGING CONFLICT</button><button onClick={recordTranscriptPerformance} disabled={!incidentId}>MEASURE TRANSCRIPT</button></div>}
       {openModule.id === "commander" && <div className="prediction-controls recovery-controls"><span>{voiceStatus || "VOICE ROOM STANDBY"}</span><input value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Actual participant name" /><select aria-label="Participant role" value={participantRole} onChange={(event) => setParticipantRole(event.target.value)}><option value="commander">Commander</option><option value="investigator">Investigator</option><option value="communications">Communications</option><option value="operator">Operator</option></select><button onClick={registerParticipant} disabled={!incidentId}>REGISTER ROLE</button><button onClick={joinVoiceRoom} disabled={!incidentId || Boolean(voiceClient.current)}>JOIN VOICE ROOM</button><button onClick={speakBriefing} disabled={!voiceClient.current}>SPEAK BRIEFING</button><button onClick={toggleVoiceMute} disabled={!voiceClient.current}>{voiceMuted ? "UNMUTE" : "MUTE"}</button><button onClick={leaveVoiceRoom} disabled={!voiceClient.current}>LEAVE ROOM</button></div>}
-      {openModule.id === "systems" && <div className="prediction-controls"><span>{monitoringStatus || certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={testMonitoring} disabled={!incidentId}>TEST MONITORING</button><button onClick={() => runStagingIntegration("slack")} disabled={!incidentId}>TEST SLACK</button><button onClick={() => runStagingIntegration("jira")} disabled={!incidentId}>TEST JIRA</button><button onClick={preparePagerDutyTest} disabled={!incidentId || Boolean(pagerDutyStage)}>PREPARE PAGERDUTY TEST</button>{pagerDutyStage && <button onClick={approvePagerDutyTest}>APPROVE & CREATE PAGERDUTY</button>}<button onClick={runApiBaseline} disabled={!snapshot?.certification_engine?.id}>RUN API BASELINE</button><button onClick={() => void measureWebsocketDelivery()} disabled={!snapshot?.certification_engine?.id}>MEASURE WEBSOCKET</button><button onClick={runGuardrailAudit} disabled={!snapshot?.certification_engine?.id}>RUN GUARDRAIL AUDIT</button><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
+      {openModule.id === "systems" && <div className="prediction-controls"><span>{monitoringStatus || certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={testMonitoring} disabled={!incidentId}>TEST MONITORING</button><button onClick={() => runStagingIntegration("slack")} disabled={!incidentId}>TEST SLACK</button><button onClick={() => runStagingIntegration("jira")} disabled={!incidentId}>TEST JIRA</button><button onClick={preparePagerDutyTest} disabled={!incidentId || Boolean(pagerDutyStage)}>PREPARE PAGERDUTY TEST</button>{pagerDutyStage && <button onClick={approvePagerDutyTest}>APPROVE & CREATE PAGERDUTY</button>}<button onClick={runApiBaseline} disabled={!snapshot?.certification_engine?.id}>RUN API BASELINE</button><button onClick={() => void measureWebsocketDelivery()} disabled={!snapshot?.certification_engine?.id}>MEASURE WEBSOCKET</button><button onClick={runGuardrailAudit} disabled={!snapshot?.certification_engine?.id}>RUN GUARDRAIL AUDIT</button><button onClick={startFreshCertification} disabled={!incidentId}>START FRESH CERTIFICATION</button><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
       {openModule.id === "recovery" && <div className="prediction-controls recovery-controls"><span>{recoveryStatus || (snapshot?.recovery.ready ? "READY FOR HUMAN CONFIRMATION" : `${snapshot?.recovery.blockers.length ?? 0} BLOCKERS REMAIN`)}</span><button onClick={reviewRecovery} disabled={!incidentId}>RECHECK RECOVERY</button>{recoveryChecks.map((check) => <div className="recovery-check" key={check.id}><strong>{check.status.toUpperCase()} / {check.criterion}</strong>{check.status !== "passed" && <><input value={recoveryObservation} onChange={(event) => setRecoveryObservation(event.target.value)} placeholder="Verified observation" /><input value={recoveryEvidenceIds} onChange={(event) => setRecoveryEvidenceIds(event.target.value)} placeholder="Evidence ID(s), comma-separated" /><button onClick={() => updateRecoveryCheck(check, "passed")}>MARK PASSED</button><button onClick={() => updateRecoveryCheck(check, "failed")}>MARK FAILED</button></>}</div>)}{snapshot?.recovery.ready && <><input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Human resolution note (10+ characters)" /><button onClick={resolveIncident}>CONFIRM AND RESOLVE</button></>}</div>}
       {openModule.id === "report" && <div className="prediction-controls recovery-controls"><span>{reportStatus || "DRAFTS REQUIRE COMMANDER CONFIRMATION"}</span><button onClick={downloadHumanReport} disabled={!incidentId}>DOWNLOAD HUMAN REPORT</button><button onClick={downloadAudit} disabled={!incidentId}>EXPORT AUDIT (JSON)</button>{snapshot?.reports.filter((report) => report.status !== "final").map((report) => <button key={report.id} onClick={() => finalizeReport(report.id)}>FINALIZE {report.type.toUpperCase()}</button>)}</div>}
     </section>}
