@@ -57,6 +57,7 @@ export const orbitApi = {
   startCertification: (incidentId: string) => request<{ id: string; status: string }>(`/api/incidents/${incidentId}/certifications`, { method: "POST", body: JSON.stringify({ environment: "staging", notes: ["Started from spatial command center"] }) }),
   evaluateCertification: (runId: string) => request<{ id: string; status: string }>(`/api/certifications/${runId}/evaluate`, { method: "POST" }),
   recordCertificationMeasurement: (runId: string, payload: { metric: string; value: number; unit: string; source: string; evidence_reference: string }) => request<{ id: string; status: string }>(`/api/certifications/${runId}/measurements`, { method: "POST", body: JSON.stringify(payload) }),
+  recordGuardrailAudit: (runId: string) => request<{ id: string; status: string }>(`/api/certifications/${runId}/guardrail-audit`, { method: "POST" }),
 };
 
 export function incidentSocketUrl(incidentId: string): string | null {

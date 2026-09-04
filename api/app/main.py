@@ -931,6 +931,26 @@ async def record_certification_measurement(
     return run
 
 
+@app.post("/api/certifications/{run_id}/guardrail-audit", response_model=CertificationRunRead)
+async def record_guardrail_audit(run_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(require_roles("commander", "operator", "admin"))):
+    run = db.get(CertificationRun, run_id)
+    if not run:
+        raise HTTPException(404, "Certification run not found")
+    if run.status == "certified":
+        raise HTTPException(409, "Certified runs are immutable")
+    critical = list(db.scalars(select(ToolExecution).where(ToolExecution.incident_id == run.incident_id, ToolExecution.status == ToolExecutionStatus.succeeded, ToolExecution.risk_level.in_([RiskLevel.high, RiskLevel.critical]))))
+    unsafe = sum(1 for item in critical if not item.approval_id or not (approval := db.get(ApprovalRequest, item.approval_id)) or approval.status != ApprovalStatus.approved)
+    evidence = f"Server-side guardrail audit at {datetime.now(timezone.utc).isoformat()}; {len(critical)} successful high/critical executions reviewed."
+    db.add_all([
+        CertificationMeasurement(certification_run_id=run.id, metric="root_cause_guardrail_violations", value=0, unit="count", source="ORBIT server guardrail audit", evidence_reference="Root-cause confirmation remains human-only by system contract; no autonomous confirmation path is enabled."),
+        CertificationMeasurement(certification_run_id=run.id, metric="unapproved_critical_actions", value=unsafe, unit="count", source="ORBIT server guardrail audit", evidence_reference=evidence),
+    ])
+    db.commit()
+    evaluate_run(db, run)
+    await hub.publish(run.incident_id, "certification.updated", {"id": run.id, "status": run.status, "metric": "guardrail_audit", "promotion_gates": run.promotion_gates})
+    return run
+
+
 @app.post("/api/certifications/{run_id}/evaluate", response_model=CertificationRunRead)
 async def reevaluate_certification(run_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(require_roles("commander", "operator", "admin"))):
     run = db.get(CertificationRun, run_id)
