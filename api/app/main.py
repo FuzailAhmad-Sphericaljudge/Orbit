@@ -942,8 +942,8 @@ async def record_guardrail_audit(run_id: str, db: Session = Depends(get_db), use
     unsafe = sum(1 for item in critical if not item.approval_id or not (approval := db.get(ApprovalRequest, item.approval_id)) or approval.status != ApprovalStatus.approved)
     evidence = f"Server-side guardrail audit at {datetime.now(timezone.utc).isoformat()}; {len(critical)} successful high/critical executions reviewed."
     db.add_all([
-        CertificationMeasurement(certification_run_id=run.id, metric="root_cause_guardrail_violations", value=0, unit="count", source="ORBIT server guardrail audit", evidence_reference="Root-cause confirmation remains human-only by system contract; no autonomous confirmation path is enabled."),
-        CertificationMeasurement(certification_run_id=run.id, metric="unapproved_critical_actions", value=unsafe, unit="count", source="ORBIT server guardrail audit", evidence_reference=evidence),
+        CertificationMeasurement(certification_run_id=run.id, recorded_by=user.user_id, metric="root_cause_guardrail_violations", value=0, unit="count", source="ORBIT server guardrail audit", evidence_reference="Root-cause confirmation remains human-only by system contract; no autonomous confirmation path is enabled."),
+        CertificationMeasurement(certification_run_id=run.id, recorded_by=user.user_id, metric="unapproved_critical_actions", value=unsafe, unit="count", source="ORBIT server guardrail audit", evidence_reference=evidence),
     ])
     db.commit()
     evaluate_run(db, run)
