@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { SpatialCommandCenter, type SpatialModule } from "./SpatialCommandCenter";
 import { useCommandCenter } from "./useCommandCenter";
 import type { CommandCenterSnapshot, RecoveryCheck } from "./types";
-import { API_BASE, orbitApi } from "./api";
+import { API_BASE, incidentSocketUrl, orbitApi } from "./api";
 import { completeLogin, hasAccessToken, logout, oidcEnabled, startLogin } from "./oidc";
 import "./styles.css";
 import "./responsive.css";
@@ -325,6 +325,29 @@ function App() {
       await refresh();
     } catch (reason) { setMonitoringStatus(reason instanceof Error ? `BASELINE SAVE FAILED / ${reason.message}` : "API BASELINE SAVE FAILED"); }
   };
+  const measureWebsocketDelivery = async () => {
+    if (!incidentId || !snapshot?.certification_engine?.id) return setMonitoringStatus("START CERTIFICATION FIRST");
+    const socketUrl = incidentSocketUrl(incidentId);
+    if (!socketUrl) return setMonitoringStatus("SIGN IN AGAIN TO MEASURE WEBSOCKET DELIVERY");
+    setMonitoringStatus("MEASURING WEBSOCKET DELIVERY");
+    await new Promise<void>((resolve, reject) => {
+      const socket = new WebSocket(socketUrl);
+      let startedAt = 0;
+      const timeout = window.setTimeout(() => { socket.close(); reject(new Error("WebSocket delivery timed out")); }, 8000);
+      socket.onopen = async () => {
+        startedAt = performance.now();
+        try { await orbitApi.addEvidence(incidentId, { claim: `Staging WebSocket delivery sample at ${new Date().toISOString()}.`, classification: "hypothesis", confidence: 100, source: "ORBIT browser WebSocket probe" }); } catch (reason) { window.clearTimeout(timeout); socket.close(); reject(reason); }
+      };
+      socket.onmessage = async () => {
+        window.clearTimeout(timeout);
+        socket.close();
+        try { await recordMeasuredTiming("websocket_delivery_ms", startedAt, "ORBIT browser WebSocket delivery"); resolve(); } catch (reason) { reject(reason); }
+      };
+      socket.onerror = () => { window.clearTimeout(timeout); reject(new Error("WebSocket connection failed")); };
+    });
+    setMonitoringStatus("WEBSOCKET DELIVERY SAMPLE RECORDED");
+    await refresh();
+  };
   const recordMeasuredTiming = async (metric: string, startedAt: number, source: string) => {
     const runId = snapshot?.certification_engine?.id;
     if (!runId) return;
@@ -492,7 +515,7 @@ function App() {
       {openModule.id === "actions" && <div className="prediction-controls recovery-controls"><span>{actionStatus || "COMMANDER CONFIRMATION REQUIRED"}</span>{snapshot?.actions.filter((action) => action.status !== "complete").map((action) => <button key={action.id} onClick={() => completeAction(action)}>COMPLETE / {action.task}</button>)}</div>}
       {openModule.id === "investigation" && <div className="prediction-controls"><span>{investigationStatus || "INVESTIGATION READY"}</span><button onClick={recordStagingConflict} disabled={!incidentId}>RECORD STAGING CONFLICT</button><button onClick={recordTranscriptPerformance} disabled={!incidentId}>MEASURE TRANSCRIPT</button></div>}
       {openModule.id === "commander" && <div className="prediction-controls recovery-controls"><span>{voiceStatus || "VOICE ROOM STANDBY"}</span><input value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Actual participant name" /><select aria-label="Participant role" value={participantRole} onChange={(event) => setParticipantRole(event.target.value)}><option value="commander">Commander</option><option value="investigator">Investigator</option><option value="communications">Communications</option><option value="operator">Operator</option></select><button onClick={registerParticipant} disabled={!incidentId}>REGISTER ROLE</button><button onClick={joinVoiceRoom} disabled={!incidentId || Boolean(voiceClient.current)}>JOIN VOICE ROOM</button><button onClick={speakBriefing} disabled={!voiceClient.current}>SPEAK BRIEFING</button><button onClick={toggleVoiceMute} disabled={!voiceClient.current}>{voiceMuted ? "UNMUTE" : "MUTE"}</button><button onClick={leaveVoiceRoom} disabled={!voiceClient.current}>LEAVE ROOM</button></div>}
-      {openModule.id === "systems" && <div className="prediction-controls"><span>{monitoringStatus || certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={testMonitoring} disabled={!incidentId}>TEST MONITORING</button><button onClick={() => runStagingIntegration("slack")} disabled={!incidentId}>TEST SLACK</button><button onClick={() => runStagingIntegration("jira")} disabled={!incidentId}>TEST JIRA</button><button onClick={preparePagerDutyTest} disabled={!incidentId || Boolean(pagerDutyStage)}>PREPARE PAGERDUTY TEST</button>{pagerDutyStage && <button onClick={approvePagerDutyTest}>APPROVE & CREATE PAGERDUTY</button>}<button onClick={runApiBaseline} disabled={!snapshot?.certification_engine?.id}>RUN API BASELINE</button><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
+      {openModule.id === "systems" && <div className="prediction-controls"><span>{monitoringStatus || certStatus || `PROMOTION / ${snapshot?.certification_engine?.status?.toUpperCase() ?? "NOT STARTED"}`}</span><button onClick={testMonitoring} disabled={!incidentId}>TEST MONITORING</button><button onClick={() => runStagingIntegration("slack")} disabled={!incidentId}>TEST SLACK</button><button onClick={() => runStagingIntegration("jira")} disabled={!incidentId}>TEST JIRA</button><button onClick={preparePagerDutyTest} disabled={!incidentId || Boolean(pagerDutyStage)}>PREPARE PAGERDUTY TEST</button>{pagerDutyStage && <button onClick={approvePagerDutyTest}>APPROVE & CREATE PAGERDUTY</button>}<button onClick={runApiBaseline} disabled={!snapshot?.certification_engine?.id}>RUN API BASELINE</button><button onClick={() => void measureWebsocketDelivery()} disabled={!snapshot?.certification_engine?.id}>MEASURE WEBSOCKET</button><button onClick={runCertification} disabled={!incidentId}>{snapshot?.certification_engine?.id ? "REEVALUATE GATES" : "START CERTIFICATION"}</button></div>}
       {openModule.id === "recovery" && <div className="prediction-controls recovery-controls"><span>{recoveryStatus || (snapshot?.recovery.ready ? "READY FOR HUMAN CONFIRMATION" : `${snapshot?.recovery.blockers.length ?? 0} BLOCKERS REMAIN`)}</span><button onClick={reviewRecovery} disabled={!incidentId}>RECHECK RECOVERY</button>{recoveryChecks.map((check) => <div className="recovery-check" key={check.id}><strong>{check.status.toUpperCase()} / {check.criterion}</strong>{check.status !== "passed" && <><input value={recoveryObservation} onChange={(event) => setRecoveryObservation(event.target.value)} placeholder="Verified observation" /><input value={recoveryEvidenceIds} onChange={(event) => setRecoveryEvidenceIds(event.target.value)} placeholder="Evidence ID(s), comma-separated" /><button onClick={() => updateRecoveryCheck(check, "passed")}>MARK PASSED</button><button onClick={() => updateRecoveryCheck(check, "failed")}>MARK FAILED</button></>}</div>)}{snapshot?.recovery.ready && <><input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Human resolution note (10+ characters)" /><button onClick={resolveIncident}>CONFIRM AND RESOLVE</button></>}</div>}
       {openModule.id === "report" && <div className="prediction-controls recovery-controls"><span>{reportStatus || "DRAFTS REQUIRE COMMANDER CONFIRMATION"}</span><button onClick={downloadHumanReport} disabled={!incidentId}>DOWNLOAD HUMAN REPORT</button><button onClick={downloadAudit} disabled={!incidentId}>EXPORT AUDIT (JSON)</button>{snapshot?.reports.filter((report) => report.status !== "final").map((report) => <button key={report.id} onClick={() => finalizeReport(report.id)}>FINALIZE {report.type.toUpperCase()}</button>)}</div>}
     </section>}
