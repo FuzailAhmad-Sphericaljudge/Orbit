@@ -56,6 +56,7 @@ export const orbitApi = {
   runLearningCycle: (incidentId: string) => request<{ run_id: string; maturity_evaluation: { evaluated: number }; alert_quality: { sample_count: number } }>("/api/production-learning/run", { method: "POST", body: JSON.stringify({ incident_id: incidentId, collect_telemetry: true, evaluate_mature_forecasts: true }) }),
   startCertification: (incidentId: string) => request<{ id: string; status: string }>(`/api/incidents/${incidentId}/certifications`, { method: "POST", body: JSON.stringify({ environment: "staging", notes: ["Started from spatial command center"] }) }),
   evaluateCertification: (runId: string) => request<{ id: string; status: string }>(`/api/certifications/${runId}/evaluate`, { method: "POST" }),
+  recordCertificationMeasurement: (runId: string, payload: { metric: string; value: number; unit: string; source: string; evidence_reference: string }) => request<{ id: string; status: string }>(`/api/certifications/${runId}/measurements`, { method: "POST", body: JSON.stringify(payload) }),
 };
 
 export function incidentSocketUrl(incidentId: string): string | null {
