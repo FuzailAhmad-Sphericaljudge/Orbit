@@ -315,6 +315,12 @@ function App() {
       await refresh();
     } catch (reason) { setMonitoringStatus(reason instanceof Error ? `BASELINE SAVE FAILED / ${reason.message}` : "API BASELINE SAVE FAILED"); }
   };
+  const recordMeasuredTiming = async (metric: string, startedAt: number, source: string) => {
+    const runId = snapshot?.certification_engine?.id;
+    if (!runId) return;
+    const value = performance.now() - startedAt;
+    try { await orbitApi.recordCertificationMeasurement(runId, { metric, value, unit: "ms", source, evidence_reference: `${source}; browser measured at ${new Date().toISOString()}.` }); } catch { /* The live session remains valid if measurement persistence is unavailable. */ }
+  };
   const runStagingIntegration = async (provider: "slack" | "jira") => {
     if (!incidentId || !window.confirm(`Send the clearly labelled ORBIT staging ${provider} test?`)) return;
     const detail = provider === "slack"
@@ -382,6 +388,7 @@ function App() {
   };
   const joinVoiceRoom = async () => {
     if (!incidentId || voiceClient.current) return;
+    const startedAt = performance.now();
     setVoiceStatus("REQUESTING MICROPHONE");
     let joiningClient: IAgoraRTCClient | null = null;
     let joiningTrack: IMicrophoneAudioTrack | null = null;
@@ -406,6 +413,7 @@ function App() {
       microphone.current = joiningTrack;
       voiceSessionId.current = session.id;
       setVoiceMuted(false);
+      await recordMeasuredTiming("voice_join_latency_ms", startedAt, "ORBIT browser Agora join");
       setVoiceStatus("LIVE / MICROPHONE CONNECTED");
       await refresh();
     } catch (reason) {
@@ -449,7 +457,9 @@ function App() {
   const speakBriefing = async () => {
     if (!incidentId || !voiceSessionId.current) return setVoiceStatus("JOIN THE VOICE ROOM FIRST");
     try {
+      const startedAt = performance.now();
       await orbitApi.generateBriefing(incidentId, { audience: "executive", speak: true, voice_session_id: voiceSessionId.current });
+      await recordMeasuredTiming("spoken_summary_latency_ms", startedAt, "ORBIT browser spoken briefing");
       setVoiceStatus("SPOKEN BRIEFING DELIVERED");
       await refresh();
     } catch (reason) { setVoiceStatus(reason instanceof Error ? `BRIEFING FAILED / ${reason.message}` : "SPOKEN BRIEFING FAILED"); }
