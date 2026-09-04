@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { incidentSocketUrl, orbitApi } from "./api";
+import { staticDemoIncident, staticDemoSnapshot } from "./staticDemo";
 import type { CommandCenterSnapshot, Incident } from "./types";
 
+const staticDemo = import.meta.env.VITE_STATIC_DEMO === "true";
+
 export function useCommandCenter() {
-  const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [incidentId, setIncidentId] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<CommandCenterSnapshot | null>(null);
+  const [incidents, setIncidents] = useState<Incident[]>(staticDemo ? [staticDemoIncident] : []);
+  const [incidentId, setIncidentId] = useState<string | null>(staticDemo ? staticDemoIncident.id : null);
+  const [snapshot, setSnapshot] = useState<CommandCenterSnapshot | null>(staticDemo ? staticDemoSnapshot : null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!staticDemo);
   const refreshTimer = useRef<number | null>(null);
 
   const refresh = useCallback(async (targetId?: string | null) => {
+    if (staticDemo) return;
     const id = targetId ?? incidentId;
     if (!id) return;
     try {
@@ -22,6 +26,7 @@ export function useCommandCenter() {
   }, [incidentId]);
 
   useEffect(() => {
+    if (staticDemo) return;
     orbitApi.listIncidents()
       .then((rows) => {
         setIncidents(rows);
@@ -34,6 +39,7 @@ export function useCommandCenter() {
   }, []);
 
   useEffect(() => {
+    if (staticDemo) return;
     if (!incidentId) return;
     setLoading(true);
     refresh(incidentId).finally(() => setLoading(false));

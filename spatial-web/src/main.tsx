@@ -30,7 +30,13 @@ function PublicDocumentPage({ type }: { type: "privacy" | "terms" | "not-found" 
 function StatusPage() {
   const [status, setStatus] = useState<{ status: string; updated_at: string; components: Array<{ name: string; status: string }> } | null>(null);
   useEffect(() => { document.title = "Service status — ORBIT"; }, []);
-  useEffect(() => { fetch(`${API_BASE}/api/status`).then((response) => response.json()).then(setStatus).catch(() => setStatus({ status: "unknown", updated_at: new Date().toISOString(), components: [] })); }, []);
+  useEffect(() => {
+    if (import.meta.env.VITE_STATIC_DEMO === "true") {
+      setStatus({ status: "operational", updated_at: new Date().toISOString(), components: [{ name: "Submission demo", status: "operational" }] });
+      return;
+    }
+    fetch(`${API_BASE}/api/status`).then((response) => response.json()).then(setStatus).catch(() => setStatus({ status: "unknown", updated_at: new Date().toISOString(), components: [] }));
+  }, []);
   const label = (value: string) => value.replaceAll("_", " ");
   return <main className="public-status"><header><b>ORBIT</b><span>PUBLIC SERVICE STATUS</span></header><section><p className={`status-dot ${status?.status ?? "unknown"}`}>{label(status?.status ?? "checking")}</p><h1>{status?.status === "operational" ? "All systems operational" : "Service disruption detected"}</h1><p>Last updated {status ? new Date(status.updated_at).toLocaleString() : "now"}</p><a className="status-command-link" href="/">OPEN COMMAND CENTER</a><div className="status-components">{status?.components.length ? status.components.map((component) => <article key={component.name}><span>{component.name}</span><b className={component.status}>{label(component.status)}</b></article>) : <article><span>ORBIT platform</span><b className="operational">operational</b></article>}</div></section></main>;
 }
@@ -75,6 +81,7 @@ function modeFor(snapshot: CommandCenterSnapshot | null) {
 }
 
 function App() {
+  const staticDemo = import.meta.env.VITE_STATIC_DEMO === "true";
   const { incidents, incidentId, setIncidentId, snapshot, loading, error, refresh } = useCommandCenter();
   const [activeIndex, setActiveIndex] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -533,9 +540,9 @@ function App() {
     } catch (reason) { setVoiceStatus(reason instanceof Error ? `BRIEFING FAILED / ${reason.message}` : "SPOKEN BRIEFING FAILED"); }
   };
 
-  return <main className="spatial-app" style={{ "--accent": active.accent, "--accent-secondary": active.accentSecondary } as CSSProperties}>
+  return <main className={`spatial-app${staticDemo ? " static-demo" : ""}`} style={{ "--accent": active.accent, "--accent-secondary": active.accentSecondary } as CSSProperties}>
     <SpatialCommandCenter modules={modules} mode={modeFor(snapshot)} onActiveChange={handleActiveChange} onOpen={handleOpen} />
-    <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select>{templates.length > 0 && <><select value={templateId} onChange={(event) => setTemplateId(event.target.value)}><option value="">DECLARE TEMPLATE</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.severity} / {template.name}</option>)}</select><button onClick={declareTemplate} disabled={!templateId}>DECLARE</button></>}<button onClick={refresh}>SYNC</button>{oidcEnabled && <button onClick={() => signedIn ? logout() : void startLogin()}>{signedIn ? "SIGN OUT" : "SIGN IN"}</button>}</div><span>{templateStatus || authStatus || (oidcEnabled ? (signedIn ? "OIDC AUTHENTICATED" : "SIGN-IN REQUIRED") : (error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"))}</span></header>
+    <header className="frame-top"><a href="#">ORBIT / SPATIAL COMMAND</a><div><select value={incidentId ?? ""} onChange={(event) => setIncidentId(event.target.value || null)} disabled={staticDemo}><option value="">NO INCIDENT</option>{incidents.map((item) => <option key={item.id} value={item.id}>{item.severity} / {item.title}</option>)}</select>{templates.length > 0 && <><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} disabled={staticDemo}><option value="">DECLARE TEMPLATE</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.severity} / {template.name}</option>)}</select><button onClick={declareTemplate} disabled={staticDemo || !templateId}>DECLARE</button></>}<button onClick={refresh} disabled={staticDemo}>SYNC</button>{oidcEnabled && <button onClick={() => signedIn ? logout() : void startLogin()} disabled={staticDemo}>{signedIn ? "SIGN OUT" : "SIGN IN"}</button>}</div><span>{staticDemo ? "SUBMISSION DEMO / READ ONLY" : templateStatus || authStatus || (oidcEnabled ? (signedIn ? "OIDC AUTHENTICATED" : "SIGN-IN REQUIRED") : (error && !import.meta.env.PROD ? "ENGINE OFFLINE" : "ENGINE READY"))}</span></header>
     <aside className="frame-left"><span>OPERATIONAL RESPONSE</span><span>VOICE / EVIDENCE / ACTION</span></aside>
     <aside className="frame-right"><span>ROOT CAUSE</span><b>UNCONFIRMED</b><span>HUMAN AUTHORITY</span><b>PRESERVED</b><span>DELIVERY</span><b>{reliability?.dead_letter_count ? `${reliability.dead_letter_count} FAILED` : reliability ? "HEALTHY" : "CHECKING"}</b></aside>
     <div className="active-caption"><span>{active.index} / {active.eyebrow}</span><h1>{active.title}</h1><p>{active.summary}</p><button onClick={() => handleOpen(active.id)}>OPEN SURFACE</button></div>
